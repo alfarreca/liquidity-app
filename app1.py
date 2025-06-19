@@ -1,42 +1,45 @@
+import streamlit as st
+import plotly.graph_objects as go
 import pandas as pd
-import yfinance as yf
-import requests
-from datetime import datetime, timedelta
 
-# Settings
-START_DATE = "2021-08-06"
-today = pd.to_datetime("today")
-fridays = pd.date_range(start=START_DATE, end=today, freq="W-FRI")
+# --- Assume df_merged is your merged dataframe ---
+# Columns: Date, Net Liquidity, BTC Close, NASDAQ, SPX
 
-# --- 1. Fetch NASDAQ and SPX from Yahoo Finance ---
-nasdaq = yf.download("^IXIC", start=START_DATE, end=today + pd.Timedelta(days=2), interval="1d")
-spx = yf.download("^GSPC", start=START_DATE, end=today + pd.Timedelta(days=2), interval="1d")
+# Normalize each series so all start at 100
+plot_cols = ['Net Liquidity', 'BTC Close', 'NASDAQ', 'SPX']
+norm_df = df_merged.copy()
+for col in plot_cols:
+    # Use first non-NA value as base
+    base = norm_df[col].dropna().iloc[0]
+    norm_df[col + ' (Norm)'] = norm_df[col] / base * 100
 
-nasdaq_spx = []
-for date in fridays:
-    date_str = date.strftime("%Y-%m-%d")
-    nas_close = nasdaq.loc[date_str]["Close"] if date_str in nasdaq.index else None
-    spx_close = spx.loc[date_str]["Close"] if date_str in spx.index else None
-    nasdaq_spx.append({"Date": date_str, "NASDAQ": nas_close, "SPX": spx_close})
-nasdaq_spx_df = pd.DataFrame(nasdaq_spx)
+fig = go.Figure()
+fig.add_trace(go.Scatter(
+    x=norm_df['Date'], y=norm_df['Net Liquidity (Norm)'],
+    mode='lines', name='Net Liquidity (Norm)'
+))
+fig.add_trace(go.Scatter(
+    x=norm_df['Date'], y=norm_df['BTC Close (Norm)'],
+    mode='lines', name='BTC Close (Norm)'
+))
+fig.add_trace(go.Scatter(
+    x=norm_df['Date'], y=norm_df['NASDAQ (Norm)'],
+    mode='lines', name='NASDAQ (Norm)'
+))
+fig.add_trace(go.Scatter(
+    x=norm_df['Date'], y=norm_df['SPX (Norm)'],
+    mode='lines', name='SPX (Norm)'
+))
 
-# --- 2. Fetch BTC weekly (CoinGecko: Friday's close = Saturday's open) ---
-btc_rows = []
-for date in fridays:
-    sat = date + timedelta(days=1)
-    url = f"https://api.coingecko.com/api/v3/coins/bitcoin/history?date={sat.strftime('%d-%m-%Y')}"
-    try:
-        resp = requests.get(url, timeout=10)
-        price = resp.json()["market_data"]["current_price"]["usd"]
-    except Exception:
-        price = None
-    btc_rows.append({"Date": sat.strftime("%Y-%m-%d"), "Close": price})
-btc_df = pd.DataFrame(btc_rows)
+fig.update_layout(
+    title="Liquidity, BTC, and Indexes (All Series Normalized to 100)",
+    xaxis_title="Date",
+    yaxis_title="Normalized Value (100 = value at start)",
+    legend_title="Series",
+    template="plotly_white",
+    hovermode="x unified",
+    margin=dict(l=10, r=10, t=60, b=30)
+)
 
-# --- 3. Save to Excel ---
-filename = "Liquidity-Data-Auto.xlsx"
-with pd.ExcelWriter(filename) as writer:
-    btc_df.to_excel(writer, sheet_name="Bitcoin", index=False)
-    nasdaq_spx_df.to_excel(writer, sheet_name="NASDAQ_SPX", index=False)
-
-print(f"File saved as {filename}")
+st.subheader("Liquidity, BTC, and Indexes — Normalized")
+st.plotly_chart(fig, use_container_width=True)
