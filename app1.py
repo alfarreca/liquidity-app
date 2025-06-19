@@ -3,7 +3,6 @@ import pandas as pd
 import plotly.graph_objects as go
 
 st.set_page_config(page_title="US Liquidity Monitor", layout="wide")
-
 st.title("US Liquidity Monitor (FRED, BTC, NASDAQ, SPX)")
 st.write("Auto-updating dashboard: Net Liquidity, Bitcoin, NASDAQ, S&P 500")
 
