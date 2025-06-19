@@ -22,7 +22,7 @@ def fetch_fred_series(series_id, start_date):
     r = requests.get(url, params=params)
     r.raise_for_status()
     obs = r.json()['observations']
-    data = {o['date']: float(o['value']) if o['value'] not in ['.', None] else None for o in obs}
+    data = {o['date']: float(o['value']) if o['value'] not in ['.', None, ''] else 0.0 for o in obs}
     return data
 
 def get_weekly_liquidity_data(start_date="2021-08-05"):
@@ -31,12 +31,13 @@ def get_weekly_liquidity_data(start_date="2021-08-05"):
         data[name] = fetch_fred_series(series_id, start_date)
     all_dates = sorted(set(data['Fed BS'].keys()) | set(data['TGA'].keys()) | set(data['RRP'].keys()))
     output = []
+    def num(x): return float(x) if x not in [None, '', '.'] else 0.0
     for d in all_dates:
         date_obj = datetime.strptime(d, "%Y-%m-%d")
-        if date_obj.weekday() == 4: # Friday
-            bs = data['Fed BS'].get(d, 0)
-            tga = data['TGA'].get(d, 0)
-            rrp = data['RRP'].get(d, 0)
+        if date_obj.weekday() == 4:  # Friday
+            bs = num(data['Fed BS'].get(d, 0))
+            tga = num(data['TGA'].get(d, 0))
+            rrp = num(data['RRP'].get(d, 0))
             netliq = bs - tga - rrp
             output.append([d, bs, tga, rrp, netliq])
     return pd.DataFrame(output, columns=['Date','Fed BS','TGA','RRP','Net Liquidity'])
@@ -57,12 +58,12 @@ if uploaded_file is not None:
     try:
         xls = pd.ExcelFile(uploaded_file)
         btc_df = pd.read_excel(xls, "Bitcoin")
-        nasdaqspx_df = pd.read_excel(xls, "NASDAQ_SPX")
+        nasdaq_spx_df = pd.read_excel(xls, "NASDAQ_SPX")
     except Exception as e:
         st.error(f"Error reading uploaded Excel file: {e}")
         st.stop()
 else:
-    st.info("⬆️ Please upload your Excel file with 'Bitcoin' and 'NASDAQ_SPX' sheets (see template).")
+    st.info("⬆️ Please upload your Excel file with 'Bitcoin' and 'NASDAQ_SPX' sheets (see template above).")
     st.stop()
 
 st.subheader("Downloading latest weekly FRED liquidity data...")
@@ -71,8 +72,8 @@ friday_dates = liq_df["Date"].tolist()
 
 st.subheader("Merging with Bitcoin and Index Data...")
 btc_col = align_btc_to_friday(friday_dates, btc_df)
-nasdaq_map = {pd.to_datetime(r['Date']).date(): r['NASDAQ'] for _, r in nasdaqspx_df.iterrows()}
-spx_map = {pd.to_datetime(r['Date']).date(): r['SPX'] for _, r in nasdaqspx_df.iterrows()}
+nasdaq_map = {pd.to_datetime(r['Date']).date(): r['NASDAQ'] for _, r in nasdaq_spx_df.iterrows()}
+spx_map = {pd.to_datetime(r['Date']).date(): r['SPX'] for _, r in nasdaq_spx_df.iterrows()}
 nasdaq_col = [nasdaq_map.get(pd.to_datetime(d).date(), None) for d in friday_dates]
 spx_col = [spx_map.get(pd.to_datetime(d).date(), None) for d in friday_dates]
 
