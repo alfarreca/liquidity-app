@@ -11,22 +11,17 @@ uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
 if uploaded_file is not None:
     try:
-        # Load sheets
         liq_df = pd.read_excel(uploaded_file, sheet_name="Liquidity Data")
         btc_df = pd.read_excel(uploaded_file, sheet_name="Bitcoin")
         idx_df = pd.read_excel(uploaded_file, sheet_name="NASDAQ_SPX")
-        
+
         # --- Detect BTC close column (robust) ---
-        btc_close_col = None
-        for col in btc_df.columns:
-            if "close" in col.lower():
-                btc_close_col = col
-                break
+        btc_close_col = next((col for col in btc_df.columns if "close" in col.lower()), None)
         if btc_close_col is None:
             st.error("No 'Close' column found in the Bitcoin sheet!")
             st.stop()
         btc_df = btc_df.rename(columns={btc_close_col: "BTC Close"})
-        
+
         # Ensure Date columns are datetime for merge
         liq_df["Date"] = pd.to_datetime(liq_df["Date"])
         btc_df["Date"] = pd.to_datetime(btc_df["Date"])
@@ -40,21 +35,28 @@ if uploaded_file is not None:
         st.markdown("### Raw Table (merged, recent values)")
         st.dataframe(df_merged.tail(20))
 
-        # Plot
-        st.markdown("### Liquidity, BTC, and Indexes")
-        fig = go.Figure()
-        if "Net Liquidity" in df_merged.columns:
-            fig.add_trace(go.Scatter(x=df_merged['Date'], y=df_merged['Net Liquidity'], mode='lines', name='Net Liquidity'))
-        if "BTC Close" in df_merged.columns:
-            fig.add_trace(go.Scatter(x=df_merged['Date'], y=df_merged['BTC Close'], mode='lines', name='BTC Close'))
+        # --- Normalize each series so all start at 100 ---
+        plot_cols = ['Net Liquidity', 'BTC Close']
         # Try to find NASDAQ and SPX columns
         nasdaq_col = next((col for col in idx_df.columns if "nasdaq" in col.lower()), None)
         spx_col = next((col for col in idx_df.columns if "spx" in col.lower() or "sp500" in col.lower() or "sp 500" in col.lower()), None)
-        if nasdaq_col and nasdaq_col in df_merged.columns:
-            fig.add_trace(go.Scatter(x=df_merged['Date'], y=df_merged[nasdaq_col], mode='lines', name=nasdaq_col))
-        if spx_col and spx_col in df_merged.columns:
-            fig.add_trace(go.Scatter(x=df_merged['Date'], y=df_merged[spx_col], mode='lines', name=spx_col))
-        fig.update_layout(margin=dict(l=10, r=10, t=30, b=10), height=450, legend=dict(orientation="h"))
+        if nasdaq_col: plot_cols.append(nasdaq_col)
+        if spx_col: plot_cols.append(spx_col)
+
+        norm_df = df_merged.copy()
+        for col in plot_cols:
+            if col in norm_df.columns:
+                base = norm_df[col].dropna().iloc[0]
+                norm_df[col + " (idx)"] = 100 * norm_df[col] / base
+
+        # Plot normalized chart
+        st.markdown("### Indexed Chart (all start at 100)")
+        fig = go.Figure()
+        for col in plot_cols:
+            idx_col = col + " (idx)"
+            if idx_col in norm_df.columns:
+                fig.add_trace(go.Scatter(x=norm_df['Date'], y=norm_df[idx_col], mode='lines', name=col))
+        fig.update_layout(margin=dict(l=10, r=10, t=30, b=10), height=500, yaxis_title="Indexed (100 = start value)", legend=dict(orientation="h"))
         st.plotly_chart(fig, use_container_width=True)
 
     except Exception as e:
