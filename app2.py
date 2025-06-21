@@ -15,52 +15,56 @@ if uploaded_file is not None:
         btc_df = pd.read_excel(uploaded_file, sheet_name="Bitcoin")
         idx_df = pd.read_excel(uploaded_file, sheet_name="NASDAQ_SPX")
 
-        # --- Ensure 'Date' columns are datetime ---
+        # --- Ensure Date columns are datetime and sorted ---
         liq_df["Date"] = pd.to_datetime(liq_df["Date"])
         btc_df["Date"] = pd.to_datetime(btc_df["Date"])
         idx_df["Date"] = pd.to_datetime(idx_df["Date"])
 
-        # --- Detect and rename BTC close column robustly ---
+        liq_df = liq_df.sort_values("Date")
+        btc_df = btc_df.sort_values("Date")
+        idx_df = idx_df.sort_values("Date")
+
+        # --- Robustly detect BTC close column ---
         btc_close_col = next((col for col in btc_df.columns if "close" in col.lower()), None)
         if btc_close_col is None:
             st.error("No 'Close' column found in the Bitcoin sheet!")
             st.stop()
         btc_df = btc_df.rename(columns={btc_close_col: "BTC Close"})
 
-        # --- Resample Bitcoin data to weekly frequency to match other sheets ---
-        btc_df = btc_df.set_index('Date').resample('W').last().reset_index()
+        # --- Merge BTC onto liquidity data using "merge_asof" (nearest previous date) ---
+        merged_df = pd.merge_asof(
+            liq_df,
+            btc_df[["Date", "BTC Close"]],
+            on="Date",
+            direction="backward"
+        )
 
-        # --- Optional: Resample liquidity and index data to weekly if needed ---
-        # liq_df = liq_df.set_index('Date').resample('W').last().reset_index()
-        # idx_df = idx_df.set_index('Date').resample('W').last().reset_index()
-
-        # --- Merge all dataframes on Date (outer join) ---
-        df_merged = liq_df.merge(btc_df[["Date", "BTC Close"]], on="Date", how="left")
-        df_merged = df_merged.merge(idx_df, on="Date", how="left")
+        # --- Merge Index data as usual (outer join) ---
+        merged_df = merged_df.merge(idx_df, on="Date", how="left")
 
         st.success("Excel data loaded successfully!")
         st.markdown("### Raw Table (merged, recent values)")
-        st.dataframe(df_merged.tail(20))
+        st.dataframe(merged_df.tail(20))
 
         # --- Normalization (start at 100) ---
         plot_cols = []
         col_name_map = {}
 
-        if 'Net Liquidity' in df_merged.columns and df_merged['Net Liquidity'].dropna().size > 0:
+        if 'Net Liquidity' in merged_df.columns and merged_df['Net Liquidity'].dropna().size > 0:
             plot_cols.append('Net Liquidity')
             col_name_map['Net Liquidity'] = 'Net Liquidity'
 
-        if 'BTC Close' in df_merged.columns and df_merged['BTC Close'].dropna().size > 0:
+        if 'BTC Close' in merged_df.columns and merged_df['BTC Close'].dropna().size > 0:
             plot_cols.append('BTC Close')
             col_name_map['BTC Close'] = 'BTC'
 
-        nasdaq_col = next((col for col in df_merged.columns if "nasdaq" in col.lower()), None)
-        if nasdaq_col and df_merged[nasdaq_col].dropna().size > 0:
+        nasdaq_col = next((col for col in merged_df.columns if "nasdaq" in col.lower()), None)
+        if nasdaq_col and merged_df[nasdaq_col].dropna().size > 0:
             plot_cols.append(nasdaq_col)
             col_name_map[nasdaq_col] = 'NASDAQ'
 
-        spx_col = next((col for col in df_merged.columns if "spx" in col.lower() or "sp500" in col.lower() or "sp 500" in col.lower()), None)
-        if spx_col and df_merged[spx_col].dropna().size > 0:
+        spx_col = next((col for col in merged_df.columns if "spx" in col.lower() or "sp500" in col.lower() or "sp 500" in col.lower()), None)
+        if spx_col and merged_df[spx_col].dropna().size > 0:
             plot_cols.append(spx_col)
             col_name_map[spx_col] = 'SPX'
 
@@ -69,7 +73,7 @@ if uploaded_file is not None:
             st.stop()
 
         # --- Normalize (start at 100) ---
-        norm_df = df_merged.copy()
+        norm_df = merged_df.copy()
         for col in plot_cols:
             non_na = norm_df[col].dropna()
             if non_na.size > 0:
