@@ -113,7 +113,7 @@ if uploaded_file:
                 side="right",
                 overlaying="y",
                 anchor="free",
-                position=1.05,
+                position=1,
                 showgrid=False
             ),
             title="Net Liquidity vs. Sideline Cash vs. VIX (Indexed, Multi Y-Axis)",
