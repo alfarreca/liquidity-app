@@ -1,95 +1,104 @@
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
+import plotly.graph_objs as go
 
 st.set_page_config(page_title="US Liquidity Monitor", layout="wide")
 st.title("US Liquidity Monitor (FRED, BTC, NASDAQ, SPX)")
-st.write("Auto-updating dashboard: Net Liquidity, Bitcoin, NASDAQ, S&P 500")
+st.write("Upload your Excel (.xlsx) with 'Liquidity Data', 'Bitcoin', and 'NASDAQ_SPX' sheets.")
 
-# --- File uploader ---
-uploaded_file = st.file_uploader("Upload your Liquidity-Data-Auto.xlsx", type="xlsx")
+uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
-if uploaded_file:
-    @st.cache_data(ttl=3600)
-    def load_data(file):
-        liq_df = pd.read_excel(file, sheet_name="Liquidity Data")
-        btc_df = pd.read_excel(file, sheet_name="Bitcoin")
-        nasdaq_spx_df = pd.read_excel(file, sheet_name="NASDAQ_SPX")
-        liq_df['Date'] = pd.to_datetime(liq_df['Date'])
-        btc_df['Date'] = pd.to_datetime(btc_df['Date'])
-        nasdaq_spx_df['Date'] = pd.to_datetime(nasdaq_spx_df['Date'])
-        df_merged = liq_df.merge(btc_df, on="Date", how="outer").merge(nasdaq_spx_df, on="Date", how="outer")
-        df_merged = df_merged.sort_values("Date").reset_index(drop=True)
-        return df_merged
+if uploaded_file is not None:
+    try:
+        # --- Load sheets ---
+        liq_df = pd.read_excel(uploaded_file, sheet_name="Liquidity Data")
+        btc_df = pd.read_excel(uploaded_file, sheet_name="Bitcoin")
+        idx_df = pd.read_excel(uploaded_file, sheet_name="NASDAQ_SPX")
 
-    df_merged = load_data(uploaded_file)
-    st.markdown("### Raw Data (recent values)")
-    st.dataframe(df_merged.tail(15))
+        # --- Ensure 'Date' columns are datetime ---
+        liq_df["Date"] = pd.to_datetime(liq_df["Date"])
+        btc_df["Date"] = pd.to_datetime(btc_df["Date"])
+        idx_df["Date"] = pd.to_datetime(idx_df["Date"])
 
-    # --- Date range selection ---
-    st.sidebar.header("Date Filter")
-    start_date, end_date = st.sidebar.date_input(
-        "Select Date Range",
-        value=[df_merged['Date'].min(), df_merged['Date'].max()],
-        min_value=df_merged['Date'].min(),
-        max_value=df_merged['Date'].max()
-    )
-    filtered_df = df_merged[
-        (df_merged['Date'] >= pd.to_datetime(start_date)) &
-        (df_merged['Date'] <= pd.to_datetime(end_date))
-    ]
+        # --- Detect and rename BTC close column robustly ---
+        btc_close_col = next((col for col in btc_df.columns if "close" in col.lower()), None)
+        if btc_close_col is None:
+            st.error("No 'Close' column found in the Bitcoin sheet!")
+            st.stop()
+        btc_df = btc_df.rename(columns={btc_close_col: "BTC Close"})
 
-    # --- Only let users pick columns that exist ---
-    possible_series = ["Net Liquidity", "BTC Close", "NASDAQ", "SPX"]
-    available_series = [col for col in possible_series if col in filtered_df.columns]
+        # --- Resample Bitcoin data to weekly frequency to match other sheets ---
+        btc_df = btc_df.set_index('Date').resample('W').last().reset_index()
 
-    if not available_series:
-        st.error("None of the expected series columns are found in your data. Please check your file and try again.")
-    else:
-        st.sidebar.header("Series Selection")
-        series_options = {
-            series: st.sidebar.checkbox(series, True) for series in available_series
-        }
-        selected_series = [series for series, checked in series_options.items() if checked]
+        # --- Optional: Resample liquidity and index data to weekly if needed ---
+        # liq_df = liq_df.set_index('Date').resample('W').last().reset_index()
+        # idx_df = idx_df.set_index('Date').resample('W').last().reset_index()
 
-        # --- Normalization ---
-        def normalize(df, cols):
-            norm_df = df.copy()
-            for col in cols:
-                if col in norm_df and norm_df[col].dropna().shape[0] > 0:
-                    base = norm_df[col].dropna().iloc[0]
-                    norm_df[col + ' (Norm)'] = norm_df[col] / base * 100
-            return norm_df
+        # --- Merge all dataframes on Date (outer join) ---
+        df_merged = liq_df.merge(btc_df[["Date", "BTC Close"]], on="Date", how="left")
+        df_merged = df_merged.merge(idx_df, on="Date", how="left")
 
-        norm_df = normalize(filtered_df, selected_series)
+        st.success("Excel data loaded successfully!")
+        st.markdown("### Raw Table (merged, recent values)")
+        st.dataframe(df_merged.tail(20))
 
-        # --- Plotting ---
+        # --- Normalization (start at 100) ---
+        plot_cols = []
+        col_name_map = {}
+
+        if 'Net Liquidity' in df_merged.columns and df_merged['Net Liquidity'].dropna().size > 0:
+            plot_cols.append('Net Liquidity')
+            col_name_map['Net Liquidity'] = 'Net Liquidity'
+
+        if 'BTC Close' in df_merged.columns and df_merged['BTC Close'].dropna().size > 0:
+            plot_cols.append('BTC Close')
+            col_name_map['BTC Close'] = 'BTC'
+
+        nasdaq_col = next((col for col in df_merged.columns if "nasdaq" in col.lower()), None)
+        if nasdaq_col and df_merged[nasdaq_col].dropna().size > 0:
+            plot_cols.append(nasdaq_col)
+            col_name_map[nasdaq_col] = 'NASDAQ'
+
+        spx_col = next((col for col in df_merged.columns if "spx" in col.lower() or "sp500" in col.lower() or "sp 500" in col.lower()), None)
+        if spx_col and df_merged[spx_col].dropna().size > 0:
+            plot_cols.append(spx_col)
+            col_name_map[spx_col] = 'SPX'
+
+        if not plot_cols:
+            st.error("No valid columns to plot! Please check your data.")
+            st.stop()
+
+        # --- Normalize (start at 100) ---
+        norm_df = df_merged.copy()
+        for col in plot_cols:
+            non_na = norm_df[col].dropna()
+            if non_na.size > 0:
+                base = non_na.iloc[0]
+                norm_df[col + " (idx)"] = 100 * norm_df[col] / base
+
+        # --- Chart ---
+        st.markdown("### Indexed Chart (all start at 100)")
         fig = go.Figure()
-        for series in selected_series:
-            if series + ' (Norm)' in norm_df:
+        for col in plot_cols:
+            idx_col = col + " (idx)"
+            if idx_col in norm_df.columns:
                 fig.add_trace(go.Scatter(
                     x=norm_df['Date'],
-                    y=norm_df[series + ' (Norm)'],
+                    y=norm_df[idx_col],
                     mode='lines',
-                    name=f'{series} (Normalized)'
+                    name=col_name_map.get(col, col)
                 ))
         fig.update_layout(
-            title="Liquidity, BTC, and Indexes (Normalized)",
-            xaxis_title="Date",
-            yaxis_title="Normalized Value (100 = start)",
-            legend_title="Series",
-            template="plotly_white",
-            hovermode="x unified",
-            margin=dict(l=10, r=10, t=60, b=30)
+            margin=dict(l=10, r=10, t=30, b=10),
+            height=500,
+            yaxis_title="Indexed (100 = start value)",
+            legend=dict(orientation="h"),
+            hovermode="x unified"
         )
-        st.subheader("Normalized Data Visualization")
         st.plotly_chart(fig, use_container_width=True)
 
-        # --- Error handling for missing data ---
-        missing_data_cols = [col for col in selected_series if filtered_df[col].isnull().values.any()]
-        if missing_data_cols:
-            st.warning(f"Warning: Data for these series contains missing values: {', '.join(missing_data_cols)}")
+    except Exception as e:
+        st.error(f"Error loading data: {e}")
 
-        st.info("For feedback, features, or troubleshooting, ask your AI financial analyst!")
 else:
-    st.info("Please upload your 'Liquidity-Data-Auto.xlsx' file to get started.")
+    st.info("Please upload your Excel file with 'Liquidity Data', 'Bitcoin', and 'NASDAQ_SPX' sheets.")
