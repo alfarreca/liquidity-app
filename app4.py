@@ -49,9 +49,11 @@ if uploaded_file:
         if merged["Sideline Cash"].isnull().all():
             st.error("All Sideline Cash values are missing after merge! Check date alignment.")
 
-        # Normalize
-        merged["Net Liquidity (idx)"] = merged["Net Liquidity"] / merged["Net Liquidity"].iloc[0] * 100
-        merged["Sideline Cash (idx)"] = merged["Sideline Cash"] / merged["Sideline Cash"].iloc[0] * 100
+        # Normalize using first valid (non-NaN) value for each series
+        first_valid_nl = merged["Net Liquidity"].dropna().iloc[0]
+        first_valid_sc = merged["Sideline Cash"].dropna().iloc[0]
+        merged["Net Liquidity (idx)"] = merged["Net Liquidity"] / first_valid_nl * 100
+        merged["Sideline Cash (idx)"] = merged["Sideline Cash"] / first_valid_sc * 100
 
         # More diagnostics!
         st.write("Sample of Net Liquidity (idx):")
