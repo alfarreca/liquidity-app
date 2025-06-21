@@ -53,10 +53,14 @@ if uploaded_file:
         merged["Net Liquidity (idx)"] = merged["Net Liquidity"] / merged["Net Liquidity"].iloc[0] * 100
         merged["Sideline Cash (idx)"] = merged["Sideline Cash"] / merged["Sideline Cash"].iloc[0] * 100
 
-        # Print min/max for debug
+        # More diagnostics!
+        st.write("Sample of Net Liquidity (idx):")
+        st.write(merged[["Date", "Net Liquidity", "Net Liquidity (idx)"]].tail(30))
         st.write("Net Liquidity (idx) min/max:", merged["Net Liquidity (idx)"].min(), merged["Net Liquidity (idx)"].max())
+        st.write("Net Liquidity (idx) unique values:", merged["Net Liquidity (idx)"].unique())
+        st.write("Sample of Sideline Cash (idx):")
+        st.write(merged[["Date", "Sideline Cash", "Sideline Cash (idx)"]].tail(30))
         st.write("Sideline Cash (idx) min/max:", merged["Sideline Cash (idx)"].min(), merged["Sideline Cash (idx)"].max())
-        st.write(merged[["Date", "Net Liquidity (idx)", "Sideline Cash (idx)"]].tail(10))
 
         # Plot with dual Y-axes
         fig = go.Figure()
