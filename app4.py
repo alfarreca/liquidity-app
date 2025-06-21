@@ -53,20 +53,39 @@ if uploaded_file:
         merged["Net Liquidity (idx)"] = merged["Net Liquidity"] / merged["Net Liquidity"].iloc[0] * 100
         merged["Sideline Cash (idx)"] = merged["Sideline Cash"] / merged["Sideline Cash"].iloc[0] * 100
 
-        # Plot
+        # Print min/max for debug
+        st.write("Net Liquidity (idx) min/max:", merged["Net Liquidity (idx)"].min(), merged["Net Liquidity (idx)"].max())
+        st.write("Sideline Cash (idx) min/max:", merged["Sideline Cash (idx)"].min(), merged["Sideline Cash (idx)"].max())
+        st.write(merged[["Date", "Net Liquidity (idx)", "Sideline Cash (idx)"]].tail(10))
+
+        # Plot with dual Y-axes
         fig = go.Figure()
         fig.add_trace(go.Scatter(
-            x=merged["Date"], y=merged["Net Liquidity (idx)"], 
-            mode="lines", name="Net Liquidity (Indexed)"
+            x=merged["Date"], y=merged["Net Liquidity (idx)"],
+            mode="lines", name="Net Liquidity (Indexed)",
+            yaxis="y1"
         ))
         fig.add_trace(go.Scatter(
-            x=merged["Date"], y=merged["Sideline Cash (idx)"], 
-            mode="lines", name="Sideline Cash (Indexed)"
+            x=merged["Date"], y=merged["Sideline Cash (idx)"],
+            mode="lines", name="Sideline Cash (Indexed)",
+            yaxis="y2"
         ))
         fig.update_layout(
-            xaxis_title="Date",
-            yaxis_title="Indexed Value (100 = Start)",
-            title="Net Liquidity vs. Sideline Cash (Indexed)",
+            xaxis=dict(title="Date"),
+            yaxis=dict(
+                title="Net Liquidity (Indexed)",
+                side="left",
+                showgrid=True,
+                zeroline=True
+            ),
+            yaxis2=dict(
+                title="Sideline Cash (Indexed)",
+                side="right",
+                overlaying="y",
+                showgrid=False,
+                zeroline=False
+            ),
+            title="Net Liquidity vs. Sideline Cash (Indexed, Dual Y-Axis)",
             legend=dict(orientation="h"),
             height=500,
             hovermode="x unified"
