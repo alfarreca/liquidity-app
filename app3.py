@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objs as go
+import plotly.express as px
 
 st.set_page_config(page_title="US Liquidity Insights", layout="wide")
 st.title("US Liquidity Insights Monitor")
@@ -159,7 +160,21 @@ if uploaded_file is not None:
         if len(plot_cols) > 1:
             corr_df = norm_df[[col + " (idx)" for col in plot_cols if col + " (idx)" in norm_df.columns]].corr()
             st.write("Correlation matrix of indexed series:")
-            st.dataframe(corr_df.style.background_gradient(cmap='coolwarm', vmin=-1, vmax=1))
+            
+            # Create heatmap using Plotly instead of background_gradient
+            fig_corr = px.imshow(
+                corr_df,
+                text_auto=True,
+                color_continuous_scale='RdBu',
+                zmin=-1,
+                zmax=1
+            )
+            fig_corr.update_layout(
+                title="Correlation Heatmap",
+                xaxis_title="Variables",
+                yaxis_title="Variables"
+            )
+            st.plotly_chart(fig_corr, use_container_width=True)
             
             if 'Net Liquidity (idx)' in corr_df.columns:
                 liquidity_corrs = corr_df['Net Liquidity (idx)'].drop('Net Liquidity (idx)')
