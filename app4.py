@@ -38,6 +38,14 @@ if uploaded_file:
             side_df[[side_date_col, side_value_col]].rename(columns={side_date_col:"Date", side_value_col:"Sideline Cash"}),
             on="Date", how="inner"
         )
+
+        # --- DIAGNOSTICS ---
+        st.write("NaN counts:", merged[["Net Liquidity", "Sideline Cash"]].isnull().sum())
+        if merged["Net Liquidity"].isnull().all():
+            st.error("All Net Liquidity values are missing after merge! Check date alignment.")
+        if merged["Sideline Cash"].isnull().all():
+            st.error("All Sideline Cash values are missing after merge! Check date alignment.")
+
         # Normalize
         merged["Net Liquidity (idx)"] = merged["Net Liquidity"] / merged["Net Liquidity"].iloc[0] * 100
         merged["Sideline Cash (idx)"] = merged["Sideline Cash"] / merged["Sideline Cash"].iloc[0] * 100
