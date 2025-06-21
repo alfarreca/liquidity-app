@@ -8,20 +8,41 @@ st.title("Net Liquidity vs Sideline Cash Dashboard")
 uploaded_file = st.file_uploader("Upload your Macro-Flows-Data-Auto.xlsx file", type=["xlsx"])
 if uploaded_file:
     try:
-        # Load sheets
+        # Load both sheets
         liq_df = pd.read_excel(uploaded_file, sheet_name="Liquidity Data")
         side_df = pd.read_excel(uploaded_file, sheet_name="Sideline Cash")
-        # Merge by date
+        st.write("Liquidity Data columns:", list(liq_df.columns))
+        st.write("Sideline Cash columns:", list(side_df.columns))
+
+        # Let user select date column if "Date" not found
+        liq_date_col = st.selectbox(
+            "Select Date column for Liquidity Data", list(liq_df.columns), index=0 if "Date" in liq_df.columns else 0
+        )
+        side_date_col = st.selectbox(
+            "Select Date column for Sideline Cash", list(side_df.columns), index=0 if "Date" in side_df.columns else 0
+        )
+
+        # Let user select value columns
+        liq_value_col = st.selectbox(
+            "Select Net Liquidity column", list(liq_df.columns), index=list(liq_df.columns).index("Net Liquidity") if "Net Liquidity" in liq_df.columns else 1
+        )
+        side_value_col = st.selectbox(
+            "Select Sideline Cash column", list(side_df.columns), index=list(side_df.columns).index("Amount") if "Amount" in side_df.columns else 1
+        )
+
+        # Prepare and merge
+        liq_df[liq_date_col] = pd.to_datetime(liq_df[liq_date_col])
+        side_df[side_date_col] = pd.to_datetime(side_df[side_date_col])
         merged = pd.merge(
-            liq_df[["Date", "Net Liquidity"]],
-            side_df[["Date", "Amount"]],
+            liq_df[[liq_date_col, liq_value_col]].rename(columns={liq_date_col:"Date", liq_value_col:"Net Liquidity"}),
+            side_df[[side_date_col, side_value_col]].rename(columns={side_date_col:"Date", side_value_col:"Sideline Cash"}),
             on="Date", how="inner"
         )
-        # Normalize both to 100
+        # Normalize
         merged["Net Liquidity (idx)"] = merged["Net Liquidity"] / merged["Net Liquidity"].iloc[0] * 100
-        merged["Sideline Cash (idx)"] = merged["Amount"] / merged["Amount"].iloc[0] * 100
+        merged["Sideline Cash (idx)"] = merged["Sideline Cash"] / merged["Sideline Cash"].iloc[0] * 100
 
-        # Plotly line chart
+        # Plot
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=merged["Date"], y=merged["Net Liquidity (idx)"], 
@@ -40,7 +61,7 @@ if uploaded_file:
             hovermode="x unified"
         )
         st.plotly_chart(fig, use_container_width=True)
-        st.dataframe(merged[["Date", "Net Liquidity", "Amount"]].tail(10))
+        st.dataframe(merged[["Date", "Net Liquidity", "Sideline Cash"]].tail(10))
     except Exception as e:
         st.error(f"Error reading or processing file: {e}")
 else:
