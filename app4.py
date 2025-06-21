@@ -30,9 +30,12 @@ if uploaded_file:
             "Select Sideline Cash column", list(side_df.columns), index=list(side_df.columns).index("Amount") if "Amount" in side_df.columns else 1
         )
 
-        # Prepare and merge
+        # Prepare and forward-fill missing values in Net Liquidity
         liq_df[liq_date_col] = pd.to_datetime(liq_df[liq_date_col])
         side_df[side_date_col] = pd.to_datetime(side_df[side_date_col])
+        liq_df[liq_value_col] = liq_df[liq_value_col].fillna(method='ffill')  # Forward fill
+
+        # Merge
         merged = pd.merge(
             liq_df[[liq_date_col, liq_value_col]].rename(columns={liq_date_col:"Date", liq_value_col:"Net Liquidity"}),
             side_df[[side_date_col, side_value_col]].rename(columns={side_date_col:"Date", side_value_col:"Sideline Cash"}),
